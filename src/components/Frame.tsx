@@ -13,6 +13,7 @@ import {
   CardDescription,
   CardContent,
 } from "~/components/ui/card";
+import { PurpleButton } from "~/components/ui/PurpleButton";
 
 import { config } from "~/components/providers/WagmiProvider";
 import { truncateAddress } from "~/lib/truncateAddress";
@@ -20,127 +21,115 @@ import { base, optimism } from "wagmi/chains";
 import { useSession } from "next-auth/react";
 import { createStore } from "mipd";
 import { Label } from "~/components/ui/label";
-import { PROJECT_TITLE } from "~/lib/constants";
-
-function ExampleCard() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Welcome to the Frame Template</CardTitle>
-        <CardDescription>
-          This is an example card that you can customize or remove
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Label>Place content in a Card here.</Label>
-      </CardContent>
-    </Card>
-  );
-}
+import { PROJECT_TITLE, QUIZ_QUESTIONS, RESULT_MESSAGES } from "~/lib/constants";
 
 export default function Frame() {
   const [isSDKLoaded, setIsSDKLoaded] = useState(false);
   const [context, setContext] = useState<Context.FrameContext>();
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [userAnswers, setUserAnswers] = useState<number[]>([]);
+  const [score, setScore] = useState(0);
+  const [showResult, setShowResult] = useState(false);
 
-  const [added, setAdded] = useState(false);
+  const handleAnswer = (selectedAnswer: number) => {
+    const isCorrect = QUIZ_QUESTIONS[currentQuestion].correct === selectedAnswer;
+    setUserAnswers([...userAnswers, selectedAnswer]);
+    setScore(prev => prev + (isCorrect ? 1 : 0));
 
-  const [addFrameResult, setAddFrameResult] = useState("");
-
-  const addFrame = useCallback(async () => {
-    try {
-      await sdk.actions.addFrame();
-    } catch (error) {
-      if (error instanceof AddFrame.RejectedByUser) {
-        setAddFrameResult(`Not added: ${error.message}`);
-      }
-
-      if (error instanceof AddFrame.InvalidDomainManifest) {
-        setAddFrameResult(`Not added: ${error.message}`);
-      }
-
-      setAddFrameResult(`Error: ${error}`);
+    if (currentQuestion < QUIZ_QUESTIONS.length - 1) {
+      setCurrentQuestion(prev => prev + 1);
+    } else {
+      setShowResult(true);
     }
-  }, []);
+  };
+
+  const resetQuiz = () => {
+    setCurrentQuestion(0);
+    setUserAnswers([]);
+    setScore(0);
+    setShowResult(false);
+  };
+
+  const getResultMessage = () => {
+    if (score === QUIZ_QUESTIONS.length) return RESULT_MESSAGES[2];
+    if (score >= QUIZ_QUESTIONS.length / 2) return RESULT_MESSAGES[1];
+    return RESULT_MESSAGES[0];
+  };
 
   useEffect(() => {
     const load = async () => {
       const context = await sdk.context;
-      if (!context) {
-        return;
-      }
+      if (!context) return;
 
       setContext(context);
-      setAdded(context.client.added);
-
-      // If frame isn't already added, prompt user to add it
-      if (!context.client.added) {
-        addFrame();
-      }
-
-      sdk.on("frameAdded", ({ notificationDetails }) => {
-        setAdded(true);
-      });
-
-      sdk.on("frameAddRejected", ({ reason }) => {
-        console.log("frameAddRejected", reason);
-      });
-
-      sdk.on("frameRemoved", () => {
-        console.log("frameRemoved");
-        setAdded(false);
-      });
-
-      sdk.on("notificationsEnabled", ({ notificationDetails }) => {
-        console.log("notificationsEnabled", notificationDetails);
-      });
-      sdk.on("notificationsDisabled", () => {
-        console.log("notificationsDisabled");
-      });
-
-      sdk.on("primaryButtonClicked", () => {
-        console.log("primaryButtonClicked");
-      });
-
-      console.log("Calling ready");
       sdk.actions.ready({});
-
-      // Set up a MIPD Store, and request Providers.
-      const store = createStore();
-
-      // Subscribe to the MIPD Store.
-      store.subscribe((providerDetails) => {
-        console.log("PROVIDER DETAILS", providerDetails);
-        // => [EIP6963ProviderDetail, EIP6963ProviderDetail, ...]
-      });
-    };
-    if (sdk && !isSDKLoaded) {
-      console.log("Calling load");
       setIsSDKLoaded(true);
-      load();
-      return () => {
-        sdk.removeAllListeners();
-      };
-    }
-  }, [isSDKLoaded, addFrame]);
+    };
 
-  if (!isSDKLoaded) {
-    return <div>Loading...</div>;
-  }
+    if (sdk && !isSDKLoaded) {
+      load();
+      return () => sdk.removeAllListeners();
+    }
+  }, [isSDKLoaded]);
+
+  if (!isSDKLoaded) return <div>Loading...</div>;
 
   return (
-    <div
-      style={{
-        paddingTop: context?.client.safeAreaInsets?.top ?? 0,
-        paddingBottom: context?.client.safeAreaInsets?.bottom ?? 0,
-        paddingLeft: context?.client.safeAreaInsets?.left ?? 0,
-        paddingRight: context?.client.safeAreaInsets?.right ?? 0,
-      }}
-    >
+    <div style={{
+      paddingTop: context?.client.safeAreaInsets?.top ?? 0,
+      paddingBottom: context?.client.safeAreaInsets?.bottom ?? 0,
+      paddingLeft: context?.client.safeAreaInsets?.left ?? 0,
+      paddingRight: context?.client.safeAreaInsets?.right ?? 0,
+    }}>
       <div className="w-[300px] mx-auto py-2 px-2">
         <h1 className="text-2xl font-bold text-center mb-4 text-neutral-900">
           {PROJECT_TITLE}
         </h1>
-        <ExampleCard />
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">
+              {showResult ? "Quiz Results" : `Question ${currentQuestion + 1}/${QUIZ_QUESTIONS.length}`}
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            {!showResult ? (
+              <>
+                <p className="mb-4 font-medium">
+                  {QUIZ_QUESTIONS[currentQuestion].question}
+                </p>
+                <div className="space-y-2">
+                  {QUIZ_QUESTIONS[currentQuestion].answers.map((answer, index) => (
+                    <PurpleButton
+                      key={index}
+                      onClick={() => handleAnswer(index)}
+                      className="w-full text-sm"
+                    >
+                      {answer}
+                    </PurpleButton>
+                  ))}
+                </div>
+                <div className="mt-4 text-sm text-gray-600">
+                  Score: {score} correct
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mb-4 font-medium">{getResultMessage()}</p>
+                <div className="mb-4">
+                  Final Score: {score}/{QUIZ_QUESTIONS.length}
+                </div>
+                <PurpleButton
+                  onClick={resetQuiz}
+                  className="w-full"
+                >
+                  Try Again
+                </PurpleButton>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
