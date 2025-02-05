@@ -68,7 +68,9 @@ export default function Frame() {
 
     if (sdk && !isSDKLoaded) {
       load();
-      return () => sdk.removeAllListeners();
+      return () => {
+        sdk.removeAllListeners();
+      };
     }
   }, [isSDKLoaded]);
 
